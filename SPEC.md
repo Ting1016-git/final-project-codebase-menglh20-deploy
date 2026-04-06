@@ -10,6 +10,8 @@
 
 **Architecture:** 5-thread concurrent model (1 Game Engine + 1 Human IO via Streamlit + 3 AI Agent threads)
 
+**Agreed Development Fee:** 40 GIX Bucks
+
 ---
 
 ## User Stories
