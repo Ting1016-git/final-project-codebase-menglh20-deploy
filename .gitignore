@@ -1,1 +1,10 @@
 **/.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+
+# Streamlit secrets (never commit real keys)
+.streamlit/secrets.toml
