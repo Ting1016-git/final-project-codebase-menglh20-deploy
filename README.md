@@ -38,13 +38,38 @@ Every AI's sole objective is to maximize its own score. Alliances are temporary 
 
 ## Project Structure
 
-TODO
+```
+how-to-fool-ai/
+├── app.py                      # Streamlit entry point — setup, game, and game-over screens
+├── game/
+│   ├── shared_state.py         # Thread-safe shared state (RLock + Queue)
+│   ├── game_engine.py          # Round orchestration and all three mini-games
+│   ├── ai_agent.py             # Autonomous AI player daemon threads
+│   ├── llm_client.py           # Anthropic API wrappers (Haiku for chat, Sonnet for decisions)
+│   └── scoring.py              # Scoring logic for all three game types
+├── prompts/
+│   ├── bai.py                  # Xiaobai 🐰 persona and system prompt
+│   ├── fox.py                  # Fox 🦊 persona and system prompt
+│   ├── ironface.py             # Tiemian 🗿 persona and system prompt
+│   └── templates.py            # Prompt builder functions (reply / proactive / decision)
+├── tests/
+│   ├── test_shared_state.py    # Concurrency, message isolation, budget tests
+│   ├── test_game_engine.py     # Round loop, phase transitions, choice waiting
+│   ├── test_scoring.py         # All three mini-game scoring rules
+│   └── test_ai_agents.py       # Agent startup, reply latency, persona sanity checks
+├── .streamlit/
+│   └── secrets.toml.example    # API key template — copy to secrets.toml
+├── requirements.txt
+├── SPEC.md                     # Full feature spec and acceptance criteria
+└── ARCHITECTURE.md             # System architecture and design decisions
+```
 
 ## Getting Started
 
 ### Prerequisites
 
-TODO
+- Python 3.10 or higher
+- An [Anthropic API key](https://console.anthropic.com/)
 
 ### Installation
 
@@ -56,11 +81,23 @@ pip install -r requirements.txt
 
 ### Configuration
 
-TODO
+```bash
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml
+```
+
+Then open `.streamlit/secrets.toml` and fill in your key:
+
+```toml
+ANTHROPIC_API_KEY = "sk-ant-..."
+```
 
 ### Run
 
-TODO
+```bash
+streamlit run app.py
+```
+
+Open the URL shown in your terminal (usually `http://localhost:8501`).
 
 
 ## Development Timeline (8 Weeks)
@@ -74,10 +111,10 @@ TODO
 
 #### 📋 Check-in 1 — End of Week 2
 **Required progress:**
-- [ ] `SharedState` passes all concurrency tests (multi-thread read/write, message isolation, send count management)
-- [ ] Three AI agent threads run independently and respond to messages via Claude API
-- [ ] A simple test harness demonstrates: send a message to an AI → receive a personality-consistent reply within 3 seconds
-- [ ] Project runs with `streamlit run app.py` (setup page can be a placeholder)
+- [x] `SharedState` passes all concurrency tests (multi-thread read/write, message isolation, send count management)
+- [x] Three AI agent threads run independently and respond to messages via Claude API
+- [x] A simple test harness demonstrates: send a message to an AI → receive a personality-consistent reply within 3 seconds
+- [x] Project runs with `streamlit run app.py` (setup page can be a placeholder)
 
 **Deliverable:** Screen recording or live demo showing the test harness in action — send a message to each of the 3 AIs and receive distinct, personality-appropriate responses.
 
@@ -93,11 +130,11 @@ TODO
 
 #### 📋 Check-in 2 — End of Week 5
 **Required progress:**
-- [ ] A full game loop works end-to-end: setup → multiple rounds → game over
-- [ ] All three mini-game types are playable with correct scoring
-- [ ] Private chat system is fully functional: player can send/receive messages, AI agents chat with each other, whisper notifications appear, send counts are enforced
-- [ ] AI agents make reasonable game decisions (pick bottles, write words, guess words) consistent with their personalities
-- [ ] Hidden scores work correctly: only own score visible during play, all scores revealed at game end
+- [x] A full game loop works end-to-end: setup → multiple rounds → game over
+- [ ] All three mini-game types are playable with correct scoring — ⚠️ two bugs filed: [#TODO-bug1] reveal screen shows blank results; [#TODO-bug2] Who Wrote It writer-bonus logic error
+- [x] Private chat system is fully functional: player can send/receive messages, AI agents chat with each other, whisper notifications appear, send counts are enforced
+- [x] AI agents make reasonable game decisions (pick bottles, write words, guess words) consistent with their personalities
+- [x] Hidden scores work correctly: only own score visible during play, all scores revealed at game end
 
 **Deliverable:** Screen recording of a complete 3-round game played from start to finish, showing at least one round of each mini-game type, with visible private chat interaction.
 
