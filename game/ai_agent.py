@@ -113,10 +113,26 @@ class AIAgent(threading.Thread):
             pass  # budget just ran out between check and send — drop silently
 
     def _handle_event(self, event: GameEvent) -> None:
-        """React to a GameEvent (e.g. round_start, make_decision)."""
-        if event.event_type == "make_decision":
-            self._make_game_decision(event.payload or {})
-        # Other event types can be handled here as the game engine grows.
+        """React to a GameEvent delivered by the game engine."""
+        if event.event_type != "make_decision":
+            # phase_change / round_end / game_over — no action needed here.
+            return
+
+        payload = event.payload or {}
+        action = payload.get("action", "")
+
+        if action == "write_word":
+            self._decide_write_word(payload)
+        elif action == "guess_word":
+            self._decide_guess_word(payload)
+        elif action == "guess_authors":
+            self._decide_guess_authors(payload)
+        elif action == "choose_bottle":
+            self._decide_choose_bottle(payload)
+        else:
+            # Unknown action — still call the LLM but don't submit a choice,
+            # so legacy callers continue to work without crashing.
+            self._make_game_decision(payload)
 
     # ------------------------------------------------------------------
     # Proactive chat
@@ -148,11 +164,87 @@ class AIAgent(threading.Thread):
             pass
 
     # ------------------------------------------------------------------
-    # Strategic decision
+    # Action-specific decision handlers
     # ------------------------------------------------------------------
 
-    def _make_game_decision(self, situation: dict) -> None:
-        """Use Sonnet to make a strategic in-game choice."""
+    def _decide_write_word(self, payload: dict) -> None:
+        """Write a secret word (used in Guess the Word and Who Wrote It)."""
+        import random
+        situation = {
+            **payload,
+            "instruction": "请写一个中文词语（2-4个字）作为你的答案，只输出词语本身。",
+        }
+        raw = self._make_game_decision(situation)
+        # Keep only the first whitespace-separated token as the word.
+        word = raw.strip().split()[0] if raw.strip() else random.choice(
+            ["苹果", "天空", "月亮", "星星"]
+        )
+        self.state.submit_choice(self.player_id, word)
+
+    def _decide_guess_word(self, payload: dict) -> None:
+        """Guess the writer's hidden word (Guess the Word)."""
+        import random
+        situation = {
+            **payload,
+            "instruction": "请猜测写词者写的是什么词（2-4个字），只输出词语本身。",
+        }
+        raw = self._make_game_decision(situation)
+        word = raw.strip().split()[0] if raw.strip() else random.choice(
+            ["苹果", "天空", "月亮", "星星"]
+        )
+        self.state.submit_choice(self.player_id, word)
+
+    def _decide_guess_authors(self, payload: dict) -> None:
+        """Guess who wrote each word in Who Wrote It.
+
+        The payload contains:
+        * ``words``             — ordered list of words to attribute
+        * ``candidate_authors`` — ordered list of possible author IDs
+
+        The agent returns a comma-separated list of guessed author IDs in the
+        same positional order as ``words``, e.g. ``"ai_0,ai_1,ai_2"``.
+        """
+        words = payload.get("words", [])
+        candidates = payload.get("candidate_authors", [])
+        situation = {
+            **payload,
+            "instruction": (
+                f"请猜测以下词语分别是谁写的。词语列表：{words}。"
+                f"候选玩家：{candidates}。"
+                f"请按词语顺序依次输出玩家ID，用英文逗号分隔，"
+                f"例如：ai_0,ai_1,ai_2"
+            ),
+        }
+        raw = self._make_game_decision(situation)
+        self.state.submit_choice(self.player_id, raw.strip())
+
+    def _decide_choose_bottle(self, payload: dict) -> None:
+        """Choose a bottle in Poison Bottle."""
+        import random
+        available = payload.get("available_bottles", ["Red", "Blue", "Green", "Yellow"])
+        situation = {
+            **payload,
+            "instruction": (
+                f"请从以下瓶子中选一个：{available}。"
+                f"只输出瓶子颜色（英文），例如：Red"
+            ),
+        }
+        raw = self._make_game_decision(situation)
+        choice = raw.strip().split()[0] if raw.strip() else ""
+        if choice not in available:
+            choice = random.choice(available)
+        self.state.submit_choice(self.player_id, choice)
+
+    # ------------------------------------------------------------------
+    # Core LLM decision call
+    # ------------------------------------------------------------------
+
+    def _make_game_decision(self, situation: dict) -> str:
+        """Call Sonnet to make a strategic in-game choice.
+
+        Returns the raw decision string (≤ 40 chars).  Callers are responsible
+        for parsing and submitting the result via ``state.submit_choice``.
+        """
         from game.llm_client import call_strategic
         from prompts.templates import build_game_decision_prompt
 
@@ -171,9 +263,7 @@ class AIAgent(threading.Thread):
         )
         self._append_context("user", user_turn)
         self._append_context("assistant", decision)
-        # The decision string is returned via the agent's own inbox so the
-        # GameEngine can pick it up — post it as a special event reply.
-        # (GameEngine reads it from a separate decision_queue if wired up.)
+        return decision
 
     # ------------------------------------------------------------------
     # Context management
