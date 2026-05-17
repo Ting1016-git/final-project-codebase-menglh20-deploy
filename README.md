@@ -64,18 +64,26 @@ how-to-fool-ai/
 └── ARCHITECTURE.md             # System architecture and design decisions
 ```
 
+## 🌐 Live Demo
+
+**[▶ Play now on Streamlit Cloud](https://how-to-fool-ai.streamlit.app)**
+
+> The live URL will be updated here once deployment is complete.
+
+---
+
 ## Getting Started
 
 ### Prerequisites
 
-- Python 3.10 or higher
+- Python 3.11 or higher
 - An [Anthropic API key](https://console.anthropic.com/)
 
 ### Installation
 
 ```bash
-git clone https://github.com/<your-username>/how-to-fool-ai.git
-cd how-to-fool-ai
+git clone https://github.com/GIX-Luyao/final-project-codebase-menglh20.git
+cd final-project-codebase-menglh20
 pip install -r requirements.txt
 ```
 
@@ -91,13 +99,41 @@ Then open `.streamlit/secrets.toml` and fill in your key:
 ANTHROPIC_API_KEY = "sk-ant-..."
 ```
 
-### Run
+Alternatively, copy `.env.example` to `.env` — the app will read the key from the environment as a fallback.
+
+### Run locally
 
 ```bash
 streamlit run app.py
 ```
 
 Open the URL shown in your terminal (usually `http://localhost:8501`).
+
+### Run tests
+
+```bash
+python -m pytest tests/ -v
+```
+
+---
+
+## Deployment
+
+This app is deployed on **[Streamlit Community Cloud](https://streamlit.io/cloud)** — the only hosting platform that natively supports Streamlit's concurrent thread model (GameEngine + 3 AIAgent threads).
+
+### Auto-deployment
+
+Any push to `main` is automatically deployed to production via Streamlit Cloud's GitHub integration. The CI badge below reflects the test suite status:
+
+[![CI](https://github.com/GIX-Luyao/final-project-codebase-menglh20/actions/workflows/ci.yml/badge.svg)](https://github.com/GIX-Luyao/final-project-codebase-menglh20/actions/workflows/ci.yml)
+
+### Environment variables
+
+| Variable | Where to set | Description |
+|----------|-------------|-------------|
+| `ANTHROPIC_API_KEY` | Streamlit Cloud → App settings → Secrets | Claude API key |
+
+See `.env.example` for the full template. **Never commit real keys.**
 
 
 ## Development Timeline (8 Weeks)
