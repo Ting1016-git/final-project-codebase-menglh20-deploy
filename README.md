@@ -66,9 +66,7 @@ how-to-fool-ai/
 
 ## 🌐 Live Demo
 
-**[▶ Play now on Streamlit Cloud](https://how-to-fool-ai.streamlit.app)**
-
-> The live URL will be updated here once deployment is complete.
+**[▶ Play now on Streamlit Cloud](https://final-project-codebase-menglh20-deploy-kosv3xusfxahayapp3epfug.streamlit.app/)**
 
 ---
 
