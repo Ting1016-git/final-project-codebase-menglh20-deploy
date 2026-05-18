@@ -23,4 +23,4 @@ SYSTEM_PROMPT = """\
 DEFAULT_REPLY = "......"
 
 # Probability of sending a proactive message each behavior-loop tick
-CHAT_INITIATIVE_PROB = 0.05
+CHAT_INITIATIVE_PROB = 0.03

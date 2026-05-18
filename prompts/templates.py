@@ -16,13 +16,16 @@ def build_reply_prompt(
     incoming_text: str,
     score: int,
     send_budget: int | None,
+    sender_name: str | None = None,
 ) -> str:
     """Prompt for replying to an incoming ChatMessage."""
     budget_str = str(send_budget) if send_budget is not None else "无限制"
+    sender_label = sender_name or sender
     lines = [
         "当前得分：" + str(score) + "  剩余发言次数：" + budget_str,
-        sender + " 对你说：「" + incoming_text + "」",
+        sender_label + " 对你说：「" + incoming_text + "」",
         "请用符合你人格的语气回复一句话（中文，不超过40字）。",
+        "不要使用内部ID（如ai_0/human），请使用角色名。",
     ]
     return "\n".join(lines)
 
@@ -33,17 +36,29 @@ def build_proactive_prompt(
     score: int,
     send_budget: int | None,
     recent_observations: list[str] | None = None,
+    target_name: str | None = None,
+    current_round: int | None = None,
+    game_type: str | None = None,
 ) -> str:
     """Prompt for proactively initiating a message."""
     budget_str = str(send_budget) if send_budget is not None else "无限制"
+    target_label = target_name or target
     lines = [
         "当前得分：" + str(score) + "  剩余发言次数：" + budget_str,
     ]
+    if current_round is not None:
+        lines.append("当前回合：" + str(current_round))
+    if game_type:
+        lines.append("当前游戏类型：" + game_type)
     if recent_observations:
         lines.append("近期观察：")
         lines.extend("- " + o for o in recent_observations)
-    lines.append("你决定主动联系 " + target + "。")
-    lines.append("请说一句话（中文，不超过40字），内容可以是闲聊、试探或传递（真假）信息。")
+    lines.append("你决定主动联系 " + target_label + "。")
+    lines.append(
+        "请说一句话（中文，不超过40字），内容可以是试探、误导或套取信息。"
+        "不要只寒暄，你的每句话都应该有战略意图。"
+    )
+    lines.append("不要使用内部ID（如ai_0/human），请使用角色名。")
     return "\n".join(lines)
 
 

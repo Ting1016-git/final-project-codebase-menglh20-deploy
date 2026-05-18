@@ -99,11 +99,20 @@ def score_who_wrote_it(
                     deltas[pid] += 1
 
     # Any writer whose word was guessed by *some* (not zero, not all) gets +1.
-    total_guessers = len(attributions)
+    # Important: "all" means all *eligible* guessers (players who actually
+    # received that author's word), not len(attributions) blindly.
     for author_id in all_players:
+        eligible_guessers = [
+            guesser_id
+            for guesser_id, their_guesses in attributions.items()
+            if author_id in their_guesses
+        ]
+        total_guessers = len(eligible_guessers)
+        if total_guessers == 0:
+            continue
         correct_for_author = sum(
-            1 for their_guesses in attributions.values()
-            if their_guesses.get(author_id) == author_id
+            1 for guesser_id in eligible_guessers
+            if attributions[guesser_id].get(author_id) == author_id
         )
         if 0 < correct_for_author < total_guessers:
             deltas[author_id] += 1

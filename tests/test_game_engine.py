@@ -102,13 +102,10 @@ class TestParseAttribution:
 # ---------------------------------------------------------------------------
 
 class TestGameTypeRotation:
-    def test_cycles_through_all_types(self, state):
-        engine = GameEngine(state, total_rounds=6, choice_timeout=0.1)
-        types = [engine._select_game_type() for _ in range(6)]
-        assert types == [
-            "guess_the_word", "who_wrote_it", "poison_bottle",
-            "guess_the_word", "who_wrote_it", "poison_bottle",
-        ]
+    def test_random_rotation_uses_all_types(self, state):
+        engine = GameEngine(state, total_rounds=30, choice_timeout=0.1)
+        types = [engine._select_game_type() for _ in range(30)]
+        assert set(types) == {"guess_the_word", "who_wrote_it", "poison_bottle"}
 
     def test_no_consecutive_repeats_in_full_cycle(self, state):
         engine = GameEngine(state, total_rounds=9, choice_timeout=0.1)

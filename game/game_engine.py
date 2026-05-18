@@ -88,7 +88,7 @@ class GameEngine(threading.Thread):
         self.choice_timeout = choice_timeout
         self.reveal_duration = reveal_duration
         self._stop_event = threading.Event()
-        self._type_index: int = 0   # cursor into _GAME_TYPES for rotation
+        self._last_game_type: Optional[str] = None
 
     # ── lifecycle ────────────────────────────────────────────────────────────
 
@@ -152,6 +152,9 @@ class GameEngine(threading.Thread):
         for pid, delta in results.get("score_deltas", {}).items():
             if delta != 0:
                 self.state.update_score(pid, delta)
+        scores_after_round = {
+            pid: self.state.get_score(pid) for pid in self.state.player_ids
+        }
 
         self.state.broadcast_event(
             GameEvent(
@@ -160,6 +163,8 @@ class GameEngine(threading.Thread):
                     "round": round_num,
                     "game_type": game_type,
                     "results": results,
+                    "score_deltas": results.get("score_deltas", {}),
+                    "scores_after_round": scores_after_round,
                 },
             )
         )
@@ -181,9 +186,10 @@ class GameEngine(threading.Thread):
     # ── game type rotation ───────────────────────────────────────────────────
 
     def _select_game_type(self) -> str:
-        """Cycle through game types in a fixed order, avoiding consecutive repeats."""
-        game_type = _GAME_TYPES[self._type_index % len(_GAME_TYPES)]
-        self._type_index += 1
+        """Select a random game type, avoiding consecutive repeats when possible."""
+        choices = [g for g in _GAME_TYPES if g != self._last_game_type]
+        game_type = random.choice(choices or _GAME_TYPES)
+        self._last_game_type = game_type
         return game_type
 
     # ── core blocking primitive ───────────────────────────────────────────────

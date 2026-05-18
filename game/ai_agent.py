@@ -24,6 +24,8 @@ if TYPE_CHECKING:
 
 # Maximum number of (role, content) pairs kept as rolling context per agent.
 _MAX_CONTEXT_PAIRS = 10
+_HUMAN_ID = "human"
+_RESERVED_REPLY_BUDGET = 3
 
 
 class AIAgent(threading.Thread):
@@ -72,15 +74,19 @@ class AIAgent(threading.Thread):
     # ------------------------------------------------------------------
 
     def _tick(self) -> None:
-        # 1. Process inbox.
-        for item in self.state.get_my_messages(self.player_id):
-            if isinstance(item, ChatMessage):
-                self._handle_chat(item)
-            elif isinstance(item, GameEvent):
-                self._handle_event(item)
+        # 1. Process inbox (prioritise human chat over other chat/events).
+        inbox_items = self.state.get_my_messages(self.player_id)
+        chats = [i for i in inbox_items if isinstance(i, ChatMessage)]
+        events = [i for i in inbox_items if isinstance(i, GameEvent)]
+        chats.sort(key=lambda m: m.sender != _HUMAN_ID)
+
+        for item in chats:
+            self._handle_chat(item)
+        for item in events:
+            self._handle_event(item)
 
         # 2. Maybe take a proactive action if budget remains.
-        if self._has_budget():
+        if self._can_initiate_proactive():
             if random.random() < self.persona.CHAT_INITIATIVE_PROB:
                 self._proactive_chat()
 
@@ -91,6 +97,13 @@ class AIAgent(threading.Thread):
     def _handle_chat(self, msg: ChatMessage) -> None:
         """Generate and send a reply to an incoming ChatMessage."""
         if not self._has_budget():
+            if msg.sender == _HUMAN_ID:
+                # Human gets explicit feedback instead of silent drop.
+                self.state.send_system_message(
+                    sender=self.player_id,
+                    recipient=_HUMAN_ID,
+                    text=f"{self.persona.NAME}本回合发言次数已用完，下一回合会恢复。",
+                )
             return
 
         from prompts.templates import build_reply_prompt
@@ -101,6 +114,7 @@ class AIAgent(threading.Thread):
             incoming_text=msg.text,
             score=self.state.get_score(self.player_id),
             send_budget=self.state.get_send_budget(self.player_id),
+            sender_name=self._player_label(msg.sender),
         )
 
         reply = self._call_chat([{"role": "user", "content": user_turn}])
@@ -143,18 +157,26 @@ class AIAgent(threading.Thread):
         others = [p for p in self.state.player_ids if p != self.player_id]
         if not others:
             return
-        target = random.choice(others)
+        # Prefer human target when possible to keep chat meaningful.
+        weights = [3 if pid == _HUMAN_ID else 1 for pid in others]
+        target = random.choices(others, weights=weights, k=1)[0]
 
         from prompts.templates import build_proactive_prompt
+        round_info = self.state.get_round_info()
 
         user_turn = build_proactive_prompt(
             persona_name=self.persona.NAME,
             target=target,
             score=self.state.get_score(self.player_id),
             send_budget=self.state.get_send_budget(self.player_id),
+            target_name=self._player_label(target),
+            current_round=round_info.get("current_round"),
+            game_type=round_info.get("game_type"),
         )
 
         text = self._call_chat([{"role": "user", "content": user_turn}])
+        if not text.strip() or text.strip() == self.persona.DEFAULT_REPLY:
+            return
         self._append_context("user", user_turn)
         self._append_context("assistant", text)
 
@@ -302,6 +324,26 @@ class AIAgent(threading.Thread):
     def _has_budget(self) -> bool:
         budget = self.state.get_send_budget(self.player_id)
         return budget is None or budget > 0
+
+    def _can_initiate_proactive(self) -> bool:
+        """Use only surplus budget for proactive chat, reserve some for replies."""
+        budget = self.state.get_send_budget(self.player_id)
+        if budget is None:
+            return True
+        return budget > _RESERVED_REPLY_BUDGET
+
+    def _player_label(self, player_id: str) -> str:
+        """Resolve internal player IDs to human-readable names."""
+        try:
+            return self.state.get_display_name(player_id)
+        except Exception:
+            fallback = {
+                "ai_0": "小白",
+                "ai_1": "狐狸",
+                "ai_2": "铁面",
+                _HUMAN_ID: "你",
+            }
+            return fallback.get(player_id, player_id)
 
     def _call_chat(self, extra_messages: list[dict[str, str]]) -> str:
         from game.llm_client import call_llm

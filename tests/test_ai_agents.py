@@ -224,3 +224,13 @@ def test_agent_stops_sending_when_budget_zero():
         finally:
             agent.stop()
             agent.join(timeout=5)
+
+
+def test_reserved_budget_blocks_proactive_when_low(state):
+    """Agent should keep reserved budget for future replies."""
+    agent = AIAgent(player_id="ai_0", persona=bai, state=state)
+    # Spend ai_0 down to the reserved threshold.
+    for _ in range(17):  # 20 -> 3
+        state.send_message("ai_0", "ai_1", "x")
+    assert state.get_send_budget("ai_0") == 3
+    assert not agent._can_initiate_proactive()

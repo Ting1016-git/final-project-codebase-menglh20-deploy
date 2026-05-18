@@ -120,6 +120,20 @@ def test_writer_partial_guess_bonus():
     assert deltas["ai_0"] >= 1   # partial-guess bonus
 
 
+def test_writer_no_bonus_when_all_eligible_guessers_correct():
+    """Writer gets 0 when every eligible guesser identifies their word."""
+    words = {"human": "梦想", "ai_0": "苹果", "ai_1": "天空", "ai_2": "月亮"}
+    attributions = {
+        "human": {"ai_0": "ai_0", "ai_1": "ai_1", "ai_2": "ai_2"},
+        "ai_1": {"human": "human", "ai_0": "ai_0", "ai_2": "ai_2"},
+        "ai_2": {"human": "human", "ai_0": "ai_0", "ai_1": "ai_1"},
+        # ai_0 does not guess ai_0's own word and gets 0 as guesser.
+        "ai_0": {"human": "ai_2", "ai_1": "human", "ai_2": "ai_1"},
+    }
+    deltas = score_who_wrote_it(words, attributions)
+    assert deltas["ai_0"] == 0
+
+
 def test_no_best_guesser_bonus_when_all_zero():
     words = {"human": "X", "ai_0": "Y"}
     attributions = {

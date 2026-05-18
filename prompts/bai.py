@@ -23,4 +23,4 @@ SYSTEM_PROMPT = """\
 DEFAULT_REPLY = "嗯……让我想想"
 
 # Probability of sending a proactive message each behavior-loop tick
-CHAT_INITIATIVE_PROB = 0.65
+CHAT_INITIATIVE_PROB = 0.35

@@ -87,6 +87,7 @@ def _init_session() -> None:
     ss.setdefault("player_name", "Player")
     ss.setdefault("pending_decision", None)   # dict payload from make_decision event
     ss.setdefault("last_round_results", None) # dict payload from round_end event
+    ss.setdefault("round_history", [])        # per-round deltas + cumulative scores
     ss.setdefault("chat_rendered_up_to", 0)   # index into chat history already shown
 
 
@@ -188,7 +189,11 @@ def _launch_game(player_name: str, total_rounds: int) -> None:
     ss.total_rounds = total_rounds
     ss.pending_decision = None
     ss.last_round_results = None
+    ss.round_history = []
     ss.chat_rendered_up_to = 0
+    state.set_display_name(HUMAN_ID, player_name)
+    for pid, meta in AI_META.items():
+        state.set_display_name(pid, meta["name"])
 
     # Discard any leftover threads from a previous game.
     _stop_threads()
@@ -205,15 +210,14 @@ def render_game() -> None:
         page_title="How to Fool AI — Game", page_icon="🎭", layout="wide"
     )
 
-    state: SharedState = st.session_state.state
-
-    # Top bar: player info + own score (only own score visible per SPEC).
-    score = state.get_score(HUMAN_ID)
+    # Top bar: player info.
     top_left, top_right = st.columns([3, 1])
     with top_left:
-        st.markdown(f"### 🎭 How to Fool AI &nbsp; — &nbsp; {st.session_state.player_name}")
+        st.markdown(
+            f"### 🎭 How to Fool AI &nbsp; — &nbsp; {st.session_state.player_name}"
+        )
     with top_right:
-        st.metric("Your score", score)
+        st.caption("Other players' scores remain hidden (???)")
 
     st.divider()
 
@@ -228,6 +232,8 @@ def render_game() -> None:
 def _game_area_fragment() -> None:
     """Auto-refreshes every 3 s: drains human inbox, shows round/phase/decision."""
     state: SharedState = st.session_state.state
+    st.metric("Your score", state.get_score(HUMAN_ID))
+    st.caption("This value auto-refreshes every 3 seconds.")
 
     # ── drain human inbox ────────────────────────────────────────────────────
     for item in state.get_my_messages(HUMAN_ID):
@@ -237,7 +243,17 @@ def _game_area_fragment() -> None:
         if etype == "make_decision":
             st.session_state.pending_decision = item.payload
         elif etype == "round_end":
-            st.session_state.last_round_results = item.payload
+            payload = item.payload or {}
+            flat_results = {**payload, **payload.get("results", {})}
+            st.session_state.last_round_results = flat_results
+            st.session_state.round_history.append(
+                {
+                    "round": payload.get("round"),
+                    "game_type": payload.get("game_type"),
+                    "score_deltas": payload.get("score_deltas", {}),
+                    "scores_after_round": payload.get("scores_after_round", {}),
+                }
+            )
             # Clear pending decision at the end of each round.
             st.session_state.pending_decision = None
         elif etype == "phase_change":
@@ -286,7 +302,7 @@ def _game_area_fragment() -> None:
         if decision:
             _render_decision_ui(decision, state)
         else:
-            st.info("💬 Use the chat panel to exchange messages while waiting for your turn.")
+            _render_waiting_guidance(game_type, current)
 
 
 def _render_round_results(results: dict) -> None:
@@ -313,6 +329,11 @@ def _render_round_results(results: dict) -> None:
     elif game_type == "poison_bottle":
         poisoned = results.get("poisoned_bottle", "?")
         st.write(f"**Poisoned bottle:** {poisoned}")
+        if order := results.get("selection_order"):
+            st.write(
+                "**Selection order (highest score first):** "
+                + " → ".join(_player_display(pid) for pid in order)
+            )
         for pid, bottle in results.get("choices", {}).items():
             poisoned_flag = " ☠️" if bottle.lower() == poisoned.lower() else ""
             st.write(f"  {_player_display(pid)}: **{bottle}**{poisoned_flag}")
@@ -336,6 +357,8 @@ def _render_decision_ui(decision: dict, state: SharedState) -> None:
 
     if action == "write_word":
         role = decision.get("your_role", "writer")
+        if role == "writer":
+            st.info("你是本轮写词者。可在聊天区误导别人（真话/假话都可以）。")
         st.write("✍️ **Write a word** (2–4 Chinese characters):")
         word = st.text_input("Your word", key="decision_write_word", max_chars=8)
         if st.button("Submit word", key="btn_write_word") and word.strip():
@@ -345,6 +368,7 @@ def _render_decision_ui(decision: dict, state: SharedState) -> None:
 
     elif action == "guess_word":
         writer_name = _player_display(decision.get("writer", "?"))
+        st.info("目标：猜中词拿 +1；也可在聊天区试探真假情报。")
         st.write(f"🔮 **Guess {writer_name}'s secret word:**")
         guess = st.text_input("Your guess", key="decision_guess_word", max_chars=8)
         if st.button("Submit guess", key="btn_guess_word") and guess.strip():
@@ -355,6 +379,7 @@ def _render_decision_ui(decision: dict, state: SharedState) -> None:
     elif action == "guess_authors":
         words = decision.get("words", [])
         candidates = decision.get("candidate_authors", [])
+        st.info("目标：尽量猜中更多作者；可在聊天中宣称任意词是你写的。")
         st.write("🎭 **Guess who wrote each word:**")
         guesses = []
         for i, word in enumerate(words):
@@ -376,6 +401,7 @@ def _render_decision_ui(decision: dict, state: SharedState) -> None:
         position = decision.get("your_position", "?")
         st.write(f"☠️ **Choose a bottle** (you pick #{position} in selection order):")
         st.caption("One bottle is poisoned. The player who drinks it loses 1 point.")
+        st.info("当前轮到你行动；其他玩家分数对你不可见，但选位顺序会泄露相对排名。")
         bottle_cols = st.columns(len(available))
         bottle_emojis = {"Red": "🔴", "Blue": "🔵", "Green": "🟢", "Yellow": "🟡"}
         for col, bottle in zip(bottle_cols, available):
@@ -510,11 +536,29 @@ def render_game_over() -> None:
         )
 
     st.divider()
+    if st.session_state.round_history:
+        st.subheader("Round-by-Round Score History")
+        table_rows = []
+        for rec in st.session_state.round_history:
+            row = {
+                "Round": rec.get("round"),
+                "Game": GAME_TYPE_LABELS.get(rec.get("game_type"), rec.get("game_type")),
+            }
+            deltas = rec.get("score_deltas", {})
+            scores_after = rec.get("scores_after_round", {})
+            for pid in ALL_PLAYERS:
+                delta = deltas.get(pid, 0)
+                sign = "+" if delta > 0 else ""
+                row[_player_display(pid)] = f"{sign}{delta} (total {scores_after.get(pid, 0)})"
+            table_rows.append(row)
+        st.dataframe(table_rows, use_container_width=True, hide_index=True)
+
+    st.divider()
     if st.button("🔄 Play Again", use_container_width=True):
         _stop_threads()
         # Reset relevant session state without clearing player_name.
         for key in ("state", "pending_decision", "last_round_results",
-                    "chat_rendered_up_to"):
+                    "chat_rendered_up_to", "round_history"):
             st.session_state.pop(key, None)
         st.session_state.page = "setup"
         st.rerun()
@@ -538,6 +582,26 @@ def _ai_display_name(player_id: str) -> str:
     if meta:
         return f"{meta['emoji']} {meta['name']}"
     return player_id
+
+
+def _render_waiting_guidance(game_type: str, current_round: int) -> None:
+    """Show contextual guidance when the player is waiting for their turn."""
+    st.info("⏳ Waiting for other players. Use chat to probe, bluff, or coordinate.")
+    if game_type == "guess_the_word":
+        st.caption(
+            f"Round {current_round}: Writer sets a hidden word, others guess. "
+            "During this window, private messages can leak truth or lies."
+        )
+    elif game_type == "who_wrote_it":
+        st.caption(
+            f"Round {current_round}: Everyone writes one word and attributes others. "
+            "Claiming authorship (true or false) is a valid strategy."
+        )
+    elif game_type == "poison_bottle":
+        st.caption(
+            f"Round {current_round}: Selection order follows hidden score ranking "
+            "(highest picks first). Watch order and chat for tells."
+        )
 
 
 # ── main ─────────────────────────────────────────────────────────────────────

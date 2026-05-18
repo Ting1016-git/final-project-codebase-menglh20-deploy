@@ -79,6 +79,8 @@ class SharedState:
         # Append-only; never drained.  UI reads a snapshot via get_chat_history().
         self._human_player_id: Optional[str] = human_player_id
         self._chat_history: List[Dict[str, Any]] = []
+        # Display names used by UI/prompt text (defaults to IDs).
+        self._display_names: Dict[str, str] = {pid: pid for pid in player_ids}
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -118,25 +120,42 @@ class SharedState:
 
             msg = ChatMessage(sender=sender, recipient=recipient, text=text)
             self._inboxes[recipient].put(msg)
-            # Update the human-visible chat history.
-            if self._human_player_id:
-                hid = self._human_player_id
-                if sender == hid or recipient == hid:
-                    self._chat_history.append({
-                        "type": "chat",
-                        "sender": sender,
-                        "recipient": recipient,
-                        "text": text,
-                        "timestamp": msg.timestamp,
-                    })
-                elif sender != hid and recipient != hid:
-                    # AI-to-AI: record a whisper notification.
-                    self._chat_history.append({
-                        "type": "whisper",
-                        "sender": sender,
-                        "recipient": recipient,
-                        "timestamp": msg.timestamp,
-                    })
+            self._record_human_visible_message(msg)
+
+    def send_system_message(self, sender: str, recipient: str, text: str) -> None:
+        """Deliver a message without consuming sender budget.
+
+        Use for non-gameplay notifications (e.g. "AI has exhausted this round's
+        send budget"), where we still want the human to receive feedback.
+        """
+        with self._lock:
+            self._require_player(sender)
+            self._require_player(recipient)
+            msg = ChatMessage(sender=sender, recipient=recipient, text=text)
+            self._inboxes[recipient].put(msg)
+            self._record_human_visible_message(msg)
+
+    def _record_human_visible_message(self, msg: ChatMessage) -> None:
+        """Append chat/whisper entries for the human-facing chat panel."""
+        if not self._human_player_id:
+            return
+        hid = self._human_player_id
+        if msg.sender == hid or msg.recipient == hid:
+            self._chat_history.append({
+                "type": "chat",
+                "sender": msg.sender,
+                "recipient": msg.recipient,
+                "text": msg.text,
+                "timestamp": msg.timestamp,
+            })
+        elif msg.sender != hid and msg.recipient != hid:
+            # AI-to-AI: record a whisper notification only.
+            self._chat_history.append({
+                "type": "whisper",
+                "sender": msg.sender,
+                "recipient": msg.recipient,
+                "timestamp": msg.timestamp,
+            })
 
     def get_my_messages(self, player_id: str) -> List[Union[ChatMessage, GameEvent]]:
         """
@@ -307,6 +326,20 @@ class SharedState:
         """
         with self._lock:
             return list(self._chat_history)
+
+    # ------------------------------------------------------------------
+    # Player display names
+    # ------------------------------------------------------------------
+
+    def set_display_name(self, player_id: str, display_name: str) -> None:
+        with self._lock:
+            self._require_player(player_id)
+            self._display_names[player_id] = display_name
+
+    def get_display_name(self, player_id: str) -> str:
+        with self._lock:
+            self._require_player(player_id)
+            return self._display_names.get(player_id, player_id)
 
     # ------------------------------------------------------------------
     # Introspection
